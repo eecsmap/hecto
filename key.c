@@ -1,3 +1,7 @@
+/*
+ * Make sure we can input all ascii 0-127
+ * using the 50 regular keys.
+ */
 #include "common.h"
 #include <stdio.h>
 #include <unistd.h>
@@ -9,7 +13,7 @@ int main()
     char buf[3];
     do {
         c = read_key();
-        //write(STDOUT_FILENO, "\r\x1b[K", 4);
+        write(STDOUT_FILENO, "\r\x1b[K", 4);
         snprintf(buf, 3, "%02X", c);
         write(STDOUT_FILENO, buf, 2);
     } while (c != '\0');
