@@ -10,6 +10,8 @@ int get_screen_size(size_t *row, size_t *col);
 typedef struct {
     size_t nrow;
     size_t ncol;
+    size_t cur_row;
+    size_t cur_col;
 } screen_t;
 
 void update_screen_size(screen_t *screen);

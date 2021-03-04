@@ -12,6 +12,19 @@
 #define NO_REVERSE_VIDEO write(STDOUT_FILENO, "\r\x1b[27m", 6)
 #define STATUS_MARGIN 2
 
+void show_cursor(screen_t *screen)
+{
+    dprintf(STDOUT_FILENO, "\x1b[%d;%dH", screen->cur_row, screen->cur_col);
+}
+
+void handle_key()
+{
+    char c = read_key();
+    switch (c) {
+    case '\0': exit(0);
+    }
+}
+
 void display(screen_t *screen)
 {
     GO_HOME;
@@ -23,16 +36,16 @@ void display(screen_t *screen)
     BEGIN_LINE;
     dprintf(STDOUT_FILENO, "%s", "hello world");
     NO_REVERSE_VIDEO;
+    show_cursor(screen);
 }
 
 int main()
 {
     setup_raw_mode();
-    char c;
-    screen_t screen;
+    screen_t screen = {0};
     do {
         update_screen_size(&screen);
         display(&screen);
-        c = read_key();
-    } while (c != '\0');
+        handle_key();
+    } while (1);
 }
