@@ -73,3 +73,8 @@ int get_screen_size(size_t *row, size_t *col)
     *col = w.ws_col;
     return 0;
 }
+
+void update_screen_size(screen_t *screen)
+{
+    if (get_screen_size(&screen->nrow, &screen->ncol) < 0) exit(1);
+}
