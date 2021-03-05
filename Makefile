@@ -1,4 +1,4 @@
-CFLAGS=-Wall -W -pedantic -std=c99 -g
+CFLAGS=-Wall -W -pedantic -std=c99 -g -O0
 
 all: key hecto
 
