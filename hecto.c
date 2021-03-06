@@ -31,7 +31,7 @@ void update_screen_size(pair_t *screen_size)
         perror("ioctl");
         exit(1);
     }
-    screen_size->y = w.ws_row;
+    screen_size->y = w.ws_row - STATUS_MARGIN;
     screen_size->x = w.ws_col;
 }
 
@@ -108,6 +108,10 @@ void handle_key(control_t *control)
                 if (control->file_cursor.x > current_line_length) {
                     control->file_cursor.x = current_line_length;
                     control->screen_cursor.x = control->file_cursor.x - control->screen_offset.x;
+                    if (control->screen_cursor.x < 0) {
+                        control->screen_offset.x += control->screen_cursor.x;
+                        control->screen_cursor.x = 0;
+                    }
                 }
             }
         } break;
@@ -121,6 +125,10 @@ void handle_key(control_t *control)
                 if (control->file_cursor.x > current_line_length) {
                     control->file_cursor.x = current_line_length;
                     control->screen_cursor.x = control->file_cursor.x - control->screen_offset.x;
+                    if (control->screen_cursor.x < 0) {
+                        control->screen_offset.x += control->screen_cursor.x;
+                        control->screen_cursor.x = 0;
+                    }
                 }
             }
         } break;
@@ -144,13 +152,20 @@ void display(control_t *control)
     GO_HOME;
     file_t *file = &control->file;
     pair_t *screen_size = &control->screen_size;
-    size_t screen_row_count = screen_size->y - STATUS_MARGIN;
+    size_t screen_row_count = screen_size->y;
     //size_t row_count = file->line_count > screen_row_count ? screen_row_count : file->line_count;
     for (size_t i = 0; i < screen_row_count; ++i) {
         BEGIN_LINE;
         size_t index = i + control->screen_offset.y;
-        if (index < file->line_count)
-            dprintf(STDOUT_FILENO, "%s\r\n", file->lines[index]);
+        if (index < file->line_count) {
+            if (control->screen_offset.x >= strlen(file->lines[index]))
+                dprintf(STDOUT_FILENO, "\r\n");
+            else {
+                char *temp = strndup(file->lines[index] + control->screen_offset.x, control->screen_size.x);
+                dprintf(STDOUT_FILENO, "%s\r\n", temp);
+                free(temp);
+            }
+        }
         else
             dprintf(STDOUT_FILENO, "~\r\n");
     }
