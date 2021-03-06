@@ -6,6 +6,7 @@
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <string.h>
 #include <stdarg.h>
 #include <unistd.h>
@@ -44,6 +45,8 @@ typedef struct file_s {
 
 typedef struct control_s {
     enum {VIEW, EDIT} mode;
+    bool dirty;
+    char *file_name;
     pair_t screen_size, screen_offset, screen_cursor, file_cursor;
     file_t file;
 } control_t;
@@ -82,6 +85,19 @@ void show_cursor(pair_t *screen_cursor)
     dprintf(STDOUT_FILENO, "\x1b[%d;%dH", screen_cursor->y + 1, screen_cursor->x + 1);
 }
 
+void save_file(control_t *control)
+{
+    FILE *fp = fopen(control->file_name, "w");
+    if (!fp) {
+        perror("fopen");
+        exit(1);
+    }
+    for (int i = 0; i < control->file.line_count; ++i) {
+        fprintf(fp, "%s\n", control->file.lines[i]);
+    }
+    fclose(fp);
+}
+
 void handle_key(control_t *control)
 {
     pair_t *screen_size = &control->screen_size;
@@ -90,6 +106,7 @@ void handle_key(control_t *control)
     if (control->mode == VIEW)
         switch (c) {
         case '\0': exit(0);
+        case '\x13': save_file(control); control->dirty = false; break;
         case 'i': control->mode = EDIT; break;
         case 'h': {
             if (control->file_cursor.x > 0)
@@ -149,6 +166,7 @@ void handle_key(control_t *control)
         case DEL:
             {
                 if (control->file_cursor.x > 0) {
+                    control->dirty = true;
                     memmove(control->file.lines[control->file_cursor.y] + control->file_cursor.x - 1,
                             control->file.lines[control->file_cursor.y] + control->file_cursor.x,
                             strlen(control->file.lines[control->file_cursor.y]) - control->file_cursor.x + 1);
@@ -157,6 +175,7 @@ void handle_key(control_t *control)
                     else control->screen_cursor.x--;
                 } else {
                     if (control->file_cursor.y == 0) break;
+                    control->dirty = true;
                     // move the current one up to the previous one if there is one.
                     char **previous_line = control->file.lines + control->file_cursor.y - 1;
                     char *cur_line = control->file.lines[control->file_cursor.y];
@@ -199,10 +218,12 @@ void handle_key(control_t *control)
             control->file_cursor.x = 0;
             control->screen_cursor.x = 0;
             control->screen_offset.x = 0;
+            control->dirty = true;
             }
         break;
         default: {
             if (!isprint(c)) break;
+            control->dirty = true;
             char **current_line = &control->file.lines[control->file_cursor.y];
             size_t len = strlen(*current_line);
             *current_line = realloc(*current_line, len + 2);
@@ -239,7 +260,7 @@ void display(control_t *control)
     }
     REVERSE_VIDEO;
     BEGIN_LINE;
-    dprintf(STDOUT_FILENO, "%s | cursor <%d,%d>", control->mode ? "EDIT" : "VIEW", control->screen_cursor.y+1, control->screen_cursor.x+1);
+    dprintf(STDOUT_FILENO, "%s | cursor <%d,%d> %s", control->mode ? "EDIT" : "VIEW", control->screen_cursor.y+1, control->screen_cursor.x+1, control->dirty ? "modified" : control->file_name);
     NO_REVERSE_VIDEO;
     show_cursor(&control->screen_cursor);
 }
@@ -251,6 +272,7 @@ int main(int argc, char **argv)
         exit(1);
     }
     control_t control = {0};
+    control.file_name = argv[1];
     load_file(argv[1], &control.file);
     setup_raw_mode();
     do {
