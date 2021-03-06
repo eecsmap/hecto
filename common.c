@@ -4,7 +4,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <termios.h>
-#include <sys/ioctl.h>
 
 // ===================================================
 // raw mode control
@@ -59,22 +58,3 @@ char read_key()
     return c;
 }
 
-// ===================================================
-// get screen size
-// ===================================================
-int get_screen_size(size_t *row, size_t *col)
-{
-    struct winsize w;
-    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &w) < 0) {
-        perror("ioctl");
-        return -1;
-    }
-    *row = w.ws_row;
-    *col = w.ws_col;
-    return 0;
-}
-
-void update_screen_size(screen_t *screen)
-{
-    if (get_screen_size(&screen->nrow, &screen->ncol) < 0) exit(1);
-}

@@ -8,6 +8,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include <unistd.h>
+#include <sys/ioctl.h>
 
 #define GO_HOME write(STDOUT_FILENO, "\x1b[H", 4)
 #define BEGIN_LINE write(STDOUT_FILENO, "\r\x1b[K", 4)
@@ -18,17 +19,35 @@
 
 #define STATUS_MARGIN 2
 
+typedef struct pair_s { int x; int y} pair_t;
+
+// ===================================================
+// get screen size
+// ===================================================
+void update_screen_size(pair_t *screen_size)
+{
+    struct winsize w;
+    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &w) < 0) {
+        perror("ioctl");
+        exit(1);
+    }
+    screen_size->y = w.ws_row;
+    screen_size->x = w.ws_col;
+}
+
 // text file consists of multiple lines
-typedef struct file_handle_s {
+typedef struct file_s {
     char **lines;
     size_t line_count;
-} file_handle_t;
+} file_t;
 
-typedef struct control_handle_s {
+typedef struct control_s {
     enum {VIEW, EDIT} mode;
-} control_handle_t;
+    pair_t screen_size, screen_offset, screen_cursor, file_cursor;
+    file_t file;
+} control_t;
 
-void add_line(file_handle_t *file, char *line, ssize_t index)
+void add_line(file_t *file, char *line, ssize_t index)
 {
     file->lines = realloc(file->lines, sizeof *file->lines * ++file->line_count);
     if (index == -1) index = file->line_count - 1;
@@ -37,7 +56,7 @@ void add_line(file_handle_t *file, char *line, ssize_t index)
     file->lines[index] = strdup(line);
 }
 
-file_handle_t load_file(char *file_path)
+void load_file(char *file_path, file_t *file)
 {
     FILE *fp = fopen(file_path, "r");
     if (!fp) {
@@ -48,41 +67,70 @@ file_handle_t load_file(char *file_path)
     char *line = NULL;
     size_t size = 0;
     ssize_t nread = 0;
-    file_handle_t file = {0};
     while ((nread = getline(&line, &size, fp)) > 0) {
         char *end = line + nread - 1;
         if (*end == '\r' || *end == '\n') *end = '\0';
-        add_line(&file, line, -1);
+        add_line(file, line, -1);
     }
     free(line);
     fclose(fp);
-    return file;
 }
 
-void show_cursor(screen_t *screen)
+void show_cursor(pair_t *screen_cursor)
 {
-    dprintf(STDOUT_FILENO, "\x1b[%d;%dH", screen->cursor.y + 1, screen->cursor.x + 1);
+    dprintf(STDOUT_FILENO, "\x1b[%d;%dH", screen_cursor->y + 1, screen_cursor->x + 1);
 }
 
-void handle_key(control_handle_t *control, screen_t *screen)
+void handle_key(control_t *control)
 {
-    cursor_t *cursor = &screen->cursor;
+    pair_t *screen_size = &control->screen_size;
+    pair_t *cursor = &control->screen_cursor;
     char c = read_key();
     if (control->mode == VIEW)
         switch (c) {
         case '\0': exit(0);
         case 'i': control->mode = EDIT; break;
         case 'h': {
-            cursor->x > 0 && --cursor->x;
+            if (control->file_cursor.x > 0)
+            {
+                control->file_cursor.x--;
+                if (control->screen_cursor.x == 0) control->screen_offset.x--;
+                else control->screen_cursor.x--;
+            }
         } break;
         case 'j': {
-            cursor->y < screen->nrow && ++cursor->y;
+            if (control->file_cursor.y < control->file.line_count - 1)
+            {
+                control->file_cursor.y++;
+                if (control->screen_cursor.y == control->screen_size.y - 1) control->screen_offset.y++;
+                else control->screen_cursor.y++;
+                size_t current_line_length = strlen(control->file.lines[control->file_cursor.y]);
+                if (control->file_cursor.x > current_line_length) {
+                    control->file_cursor.x = current_line_length;
+                    control->screen_cursor.x = control->file_cursor.x - control->screen_offset.x;
+                }
+            }
         } break;
         case 'k': {
-            cursor->y > 0 && --cursor->y;
+            if (control->file_cursor.y > 0)
+            {
+                control->file_cursor.y--;
+                if (control->screen_cursor.y == 0) control->screen_offset.y--;
+                else control->screen_cursor.y--;
+                size_t current_line_length = strlen(control->file.lines[control->file_cursor.y]);
+                if (control->file_cursor.x > current_line_length) {
+                    control->file_cursor.x = current_line_length;
+                    control->screen_cursor.x = control->file_cursor.x - control->screen_offset.x;
+                }
+            }
         } break;
         case 'l': {
-            cursor->x < screen->ncol && ++cursor->x;
+            if (control->file_cursor.x < strlen(control->file.lines[control->file_cursor.y]))
+            {
+                control->file_cursor.x++;
+                if (control->screen_cursor.x == control->screen_size.x - 1) control->screen_offset.x++;
+                else control->screen_cursor.x++;
+            }
         } break;
         }
     else if (control->mode == EDIT)
@@ -91,20 +139,26 @@ void handle_key(control_handle_t *control, screen_t *screen)
         }
 }
 
-void display(control_handle_t *control, file_handle_t *file, screen_t *screen)
+void display(control_t *control)
 {
     GO_HOME;
-    size_t screen_row_count = screen->nrow - STATUS_MARGIN;
-    size_t row_count = file->line_count > screen_row_count ? screen_row_count : file->line_count;
-    for (size_t i = 0; i < row_count; ++i) {
+    file_t *file = &control->file;
+    pair_t *screen_size = &control->screen_size;
+    size_t screen_row_count = screen_size->y - STATUS_MARGIN;
+    //size_t row_count = file->line_count > screen_row_count ? screen_row_count : file->line_count;
+    for (size_t i = 0; i < screen_row_count; ++i) {
         BEGIN_LINE;
-        dprintf(STDOUT_FILENO, "%s\r\n", file->lines[i]);
+        size_t index = i + control->screen_offset.y;
+        if (index < file->line_count)
+            dprintf(STDOUT_FILENO, "%s\r\n", file->lines[index]);
+        else
+            dprintf(STDOUT_FILENO, "~\r\n");
     }
     REVERSE_VIDEO;
     BEGIN_LINE;
-    dprintf(STDOUT_FILENO, "%s | cursor <%d,%d>", control->mode ? "EDIT" : "VIEW", screen->cursor.y+1, screen->cursor.x+1);
+    dprintf(STDOUT_FILENO, "%s | cursor <%d,%d>", control->mode ? "EDIT" : "VIEW", control->screen_cursor.y+1, control->screen_cursor.x+1);
     NO_REVERSE_VIDEO;
-    show_cursor(screen);
+    show_cursor(&control->screen_cursor);
 }
 
 int main(int argc, char **argv)
@@ -113,13 +167,12 @@ int main(int argc, char **argv)
         fprintf(stderr, "usage: %s <file>\n", argv[0]);
         exit(1);
     }
-    file_handle_t file = load_file(argv[1]);
-    control_handle_t control = {0};
+    control_t control = {0};
+    load_file(argv[1], &control.file);
     setup_raw_mode();
-    screen_t screen = {0};
     do {
-        update_screen_size(&screen);
-        display(&control, &file, &screen);
-        handle_key(&control, &screen);
+        update_screen_size(&control.screen_size);
+        handle_key(&control);
+        display(&control);
     } while (1);
 }
