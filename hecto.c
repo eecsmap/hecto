@@ -3,6 +3,7 @@
 
 #define _POSIX_C_SOURCE 200809L
 
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,7 +18,7 @@
 #define CURSOR_SHOW write(STDOUT_FILENO, "\x1b[25h", 6)
 #define CURSOR_HIDE write(STDOUT_FILENO, "\x1b[25l", 6)
 
-#define STATUS_MARGIN 2
+#define STATUS_MARGIN 1
 
 typedef struct pair_s { int x; int y} pair_t;
 
@@ -144,6 +145,42 @@ void handle_key(control_t *control)
     else if (control->mode == EDIT)
         switch (c) {
         case ESC: control->mode = VIEW; break;
+        case BS:
+        case DEL:
+            {
+                if (control->file_cursor.x > 0) {
+                    memmove(control->file.lines[control->file_cursor.y] + control->file_cursor.x - 1,
+                            control->file.lines[control->file_cursor.y] + control->file_cursor.x,
+                            strlen(control->file.lines[control->file_cursor.y]) - control->file_cursor.x + 1);
+                    control->file_cursor.x--;
+                    if (control->screen_cursor.x == 0) control->screen_offset.x--;
+                    else control->screen_cursor.x--;
+                } else {
+                    if (control->file_cursor.y == 0) break;
+                    // move the current one up to the previous one if there is one.
+                    char **previous_line = control->file.lines + control->file_cursor.y - 1;
+                    char *cur_line = control->file.lines[control->file_cursor.y];
+                    control->file_cursor.x = strlen(*previous_line);
+                    *previous_line = realloc(*previous_line, strlen(*previous_line) + strlen(cur_line) + 1);
+                    strcat(*previous_line, cur_line);
+                    if (control->file_cursor.y < control->file.line_count - 1) {
+                        memmove(control->file.lines + control->file_cursor.y,
+                                control->file.lines + control->file_cursor.y + 1,
+                                sizeof control->file.lines[0] * (control->file.line_count - control->file_cursor.y - 1));
+                    }
+                    control->file.line_count--;
+                    free(cur_line);
+                    control->file_cursor.y--;
+                    control->screen_cursor.x = control->file_cursor.x;
+                    if (control->file_cursor.x > control->screen_size.x - 1) {
+                        control->screen_offset.x = control->file_cursor.x - control->screen_size.x + 1;
+                        control->screen_cursor.x = control->screen_size.x - 1;
+                    }
+                    if (control->screen_cursor.y == 0) control->screen_offset.y--;
+                    else control->screen_cursor.y--;
+                }
+            };
+            break;
         case '\r':
         case '\n': {
             control->file.lines = realloc(control->file.lines, sizeof control->file.lines[0] * (++control->file.line_count));
@@ -165,6 +202,7 @@ void handle_key(control_t *control)
             }
         break;
         default: {
+            if (!isprint(c)) break;
             char **current_line = &control->file.lines[control->file_cursor.y];
             size_t len = strlen(*current_line);
             *current_line = realloc(*current_line, len + 2);

@@ -12,7 +12,7 @@
 #define ENQ   5 // enquiry
 #define ACK   6 // acknowledgement
 #define BEL   7 // bell
-#define BSx   8 // backspace
+#define BS    8 // backspace
 #define HT    9 // horizontal tab
 #define LF   10 // line feed
 #define VT   11 // vertical tab
