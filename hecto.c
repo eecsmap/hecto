@@ -144,7 +144,37 @@ void handle_key(control_t *control)
     else if (control->mode == EDIT)
         switch (c) {
         case ESC: control->mode = VIEW; break;
-        }
+        case '\r':
+        case '\n': {
+            control->file.lines = realloc(control->file.lines, sizeof control->file.lines[0] * (++control->file.line_count));
+            if (control->file_cursor.y + 2 < control->file.line_count)
+                memmove(control->file.lines + control->file_cursor.y + 2, control->file.lines + control->file_cursor.y + 1, sizeof control->file.lines[0] * (control->file.line_count - control->file_cursor.y - 2));
+            if (control->file_cursor.x < strlen(control->file.lines[control->file_cursor.y])) {
+                control->file.lines[control->file_cursor.y + 1] = strdup(control->file.lines[control->file_cursor.y] + control->file_cursor.x);
+                control->file.lines[control->file_cursor.y][control->file_cursor.x] = '\0';
+            } else {
+                control->file.lines[control->file_cursor.y + 1] = malloc(1);
+                control->file.lines[control->file_cursor.y + 1][0] = '\0';
+            }
+            control->file_cursor.y++;
+            if (control->screen_cursor.y == control->screen_size.y - 1) control->screen_offset.y++;
+            else control->screen_cursor.y++;
+            control->file_cursor.x = 0;
+            control->screen_cursor.x = 0;
+            control->screen_offset.x = 0;
+            }
+        break;
+        default: {
+            char **current_line = &control->file.lines[control->file_cursor.y];
+            size_t len = strlen(*current_line);
+            *current_line = realloc(*current_line, len + 2);
+            if (control->file_cursor.x < len)
+                memmove(*current_line + control->file_cursor.x + 1, *current_line + control->file_cursor.x, len - control->file_cursor.x + 1);
+            *(*current_line + control->file_cursor.x) = c;
+            control->file_cursor.x++;
+            if (control->screen_cursor.x == control->screen_size.x - 1) control->screen_offset.x++;
+            else control->screen_cursor.x++;
+        }}
 }
 
 void display(control_t *control)
