@@ -1,10 +1,8 @@
-CFLAGS=-Wall -W -pedantic -std=c99 -g -O0
+CFLAGS=-Wall -W -pedantic -std=c99 -g
 
-all: key hecto
+all: hecto
 
 hecto: hecto.c common.o
 
-key: key.o common.o
-
 clean:
-	rm key hecto *.o
+	rm hecto *.o

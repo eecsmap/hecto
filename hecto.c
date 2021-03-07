@@ -68,8 +68,8 @@ void load_file(char *file_path, file_t *file)
 {
     FILE *fp = fopen(file_path, "r");
     if (!fp) {
-        perror("fopen");
-        exit(1);
+        add_line(file, "", -1);
+        return;
     }
 
     char *line = NULL;
