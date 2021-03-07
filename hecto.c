@@ -1,3 +1,7 @@
+/*
+ * this is the first complete-ish version
+ */
+
 #include "common.h"
 #include "ascii.h"
 
@@ -71,13 +75,16 @@ void load_file(char *file_path, file_t *file)
     char *line = NULL;
     size_t size = 0;
     ssize_t nread = 0;
+    bool file_empty = true;
     while ((nread = getline(&line, &size, fp)) > 0) {
+        file_empty = false;
         char *end = line + nread - 1;
         if (*end == '\r' || *end == '\n') *end = '\0';
         add_line(file, line, -1);
     }
     free(line);
     fclose(fp);
+    if (file_empty) add_line(file, "", -1);
 }
 
 void show_cursor(pair_t *screen_cursor)
@@ -91,6 +98,9 @@ void save_file(control_t *control)
     if (!fp) {
         perror("fopen");
         exit(1);
+    }
+    if (control->file.line_count == 1 && strlen(control->file.lines[0]) == 0) {
+        fclose(fp); return;
     }
     for (int i = 0; i < control->file.line_count; ++i) {
         fprintf(fp, "%s\n", control->file.lines[i]);
@@ -227,7 +237,7 @@ void handle_key(control_t *control)
             char **current_line = &control->file.lines[control->file_cursor.y];
             size_t len = strlen(*current_line);
             *current_line = realloc(*current_line, len + 2);
-            if (control->file_cursor.x < len)
+            if (control->file_cursor.x <= len)
                 memmove(*current_line + control->file_cursor.x + 1, *current_line + control->file_cursor.x, len - control->file_cursor.x + 1);
             *(*current_line + control->file_cursor.x) = c;
             control->file_cursor.x++;
